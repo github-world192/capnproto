@@ -663,11 +663,11 @@ kj::Promise<kj::Maybe<MessageReaderAndFds>> BufferedMessageStream::tryReadMessag
       // This message is long-lived, so we must make a copy to get it out of our buffer.
       if (msgData.size() <= scratchSpace.size()) {
         // Oh hey, we can use the provided scratch space.
-        memcpy(scratchSpace.begin(), msgData.begin(), msgData.asBytes().size());
+        scratchSpace.first(msgData.size()).asBytes().copyFrom(msgData.asBytes());
         reader = kj::heap<MessageReaderImpl>(scratchSpace, options);
       } else {
         auto ownMsgData = kj::heapArray<word>(msgData.size());
-        memcpy(ownMsgData.begin(), msgData.begin(), msgData.asBytes().size());
+        ownMsgData.asBytes().copyFrom(msgData.asBytes());
         reader = kj::heap<MessageReaderImpl>(kj::mv(ownMsgData), options);
       }
     }
@@ -792,7 +792,7 @@ kj::Promise<kj::Maybe<MessageReaderAndFds>> BufferedMessageStream::readEntireMes
 
   auto msgBuffer = kj::heapArray<word>(expectedSizeInWords);
 
-  memcpy(msgBuffer.asBytes().begin(), prefix.begin(), prefix.size());
+  msgBuffer.asBytes().first(prefix.size()).copyFrom(prefix);
 
   size_t bytesRemaining = msgBuffer.asBytes().size() - prefix.size();
 

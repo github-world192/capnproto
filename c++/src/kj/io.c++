@@ -81,15 +81,18 @@ Array<byte> readAll(InputStream& input, uint64_t limit, bool nulTerminate) {
     limit -= n;
     if (n < part.size()) {
       auto result = heapArray<byte>(parts.size() * BLOCK_SIZE + n + nulTerminate);
-      byte* pos = result.begin();
+      auto remaining = result.asPtr();
       for (auto& p: parts) {
-        memcpy(pos, p.begin(), BLOCK_SIZE);
-        pos += BLOCK_SIZE;
+        remaining.first(BLOCK_SIZE).copyFrom(p.first(BLOCK_SIZE));
+        remaining = remaining.slice(BLOCK_SIZE);
       }
-      memcpy(pos, part.begin(), n);
-      pos += n;
-      if (nulTerminate) *pos++ = '\0';
-      KJ_ASSERT(pos == result.end());
+      remaining.first(n).copyFrom(part.first(n));
+      remaining = remaining.slice(n);
+      if (nulTerminate) {
+        remaining[0] = '\0';
+        remaining = remaining.slice(1);
+      }
+      KJ_ASSERT(remaining.size() == 0);
       return result;
     } else {
       parts.add(kj::mv(part));
@@ -140,12 +143,12 @@ size_t BufferedInputStreamWrapper::tryRead(ArrayPtr<byte> dst, size_t minBytes) 
   if (minBytes <= bufferAvailable.size()) {
     // Serve from current buffer.
     size_t n = kj::min(bufferAvailable.size(), maxBytes);
-    memcpy(dst.begin(), bufferAvailable.begin(), n);
+    dst.first(n).copyFrom(bufferAvailable.first(n));
     bufferAvailable = bufferAvailable.slice(n);
     return n;
   } else {
     // Copy current available into destination.
-    memcpy(dst.begin(), bufferAvailable.begin(), bufferAvailable.size());
+    dst.first(bufferAvailable.size()).copyFrom(bufferAvailable);
     size_t fromFirstBuffer = bufferAvailable.size();
     dst = dst.slice(fromFirstBuffer);
     minBytes -= fromFirstBuffer;
@@ -155,7 +158,7 @@ size_t BufferedInputStreamWrapper::tryRead(ArrayPtr<byte> dst, size_t minBytes) 
       // Read the next buffer-full.
       size_t n = inner.tryRead(buffer, minBytes);
       size_t fromSecondBuffer = kj::min(n, maxBytes);
-      memcpy(dst.begin(), buffer.begin(), fromSecondBuffer);
+      dst.first(fromSecondBuffer).copyFrom(buffer.first(fromSecondBuffer));
       bufferAvailable = buffer.slice(fromSecondBuffer, n);
       return fromFirstBuffer + fromSecondBuffer;
     } else {
@@ -217,17 +220,19 @@ void BufferedOutputStreamWrapper::write(ArrayPtr<const byte> src) {
     size_t available = buffer.end() - bufferPos;
 
     if (size <= available) {
-      memcpy(bufferPos, src.begin(), size);
+      auto offset = bufferPos - buffer.begin();
+      buffer.slice(offset, offset + size).copyFrom(src.first(size));
       bufferPos += size;
     } else if (size <= buffer.size()) {
       // Too much for this buffer, but not a full buffer's worth, so we'll go ahead and copy.
-      memcpy(bufferPos, src.begin(), available);
+      auto offset = bufferPos - buffer.begin();
+      buffer.slice(offset, offset + available).copyFrom(src.first(available));
       inner.write(buffer);
 
       size -= available;
       src = src.slice(available);
 
-      memcpy(buffer.begin(), src.begin(), size);
+      buffer.first(size).copyFrom(src.first(size));
       bufferPos = buffer.begin() + size;
     } else {
       // Writing so much data that we might as well write directly to avoid a copy.
@@ -249,7 +254,7 @@ ArrayPtr<const byte> ArrayInputStream::tryGetReadBuffer() {
 
 size_t ArrayInputStream::tryRead(ArrayPtr<byte> dst, size_t minBytes) {
   size_t n = kj::min(dst.size(), array.size());
-  memcpy(dst.begin(), array.begin(), n);
+  dst.first(n).copyFrom(array.first(n));
   array = array.slice(n);
   return n;
 }
@@ -280,7 +285,8 @@ void ArrayOutputStream::write(ArrayPtr<const byte> src) {
   } else {
     KJ_REQUIRE(size <= (size_t)(array.end() - fillPos),
             "ArrayOutputStream's backing array was not large enough for the data written.");
-    memcpy(fillPos, src.begin(), size);
+    auto offset = fillPos - array.begin();
+    array.slice(offset, offset + size).copyFrom(src.first(size));
     fillPos += size;
   }
 }
@@ -311,7 +317,8 @@ void VectorOutputStream::write(ArrayPtr<const byte> src) {
       grow(fillPos - vector.begin() + size);
     }
 
-    memcpy(fillPos, src.begin(), size);
+    auto offset = fillPos - vector.begin();
+    vector.slice(offset, offset + size).copyFrom(src.first(size));
     fillPos += size;
   }
 }
@@ -320,7 +327,7 @@ void VectorOutputStream::grow(size_t minSize) {
   size_t newSize = vector.size() * 2;
   while (newSize < minSize) newSize *= 2;
   auto newVector = heapArray<byte>(newSize);
-  memcpy(newVector.begin(), vector.begin(), fillPos - vector.begin());
+  newVector.first(fillPos - vector.begin()).copyFrom(vector.first(fillPos - vector.begin()));
   fillPos = fillPos - vector.begin() + newVector.begin();
   vector = kj::mv(newVector);
 }

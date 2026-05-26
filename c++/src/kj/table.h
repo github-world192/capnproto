@@ -1048,12 +1048,10 @@ void compilerBarrier() {
 }
 
 template <typename T>
-inline void acopy(T* to, T* from, size_t size) { memcpy(to, from, size * sizeof(T)); }
-template <typename T>
 inline void amove(T* to, T* from, size_t size) { memmove(to, from, size * sizeof(T)); }
 template <typename T>
 inline void azero(T* ptr, size_t size) { memset(ptr, 0, size * sizeof(T)); }
-// memcpy/memmove/memset variants that count size in elements, not bytes.
+// memmove/memset variants that count size in elements, not bytes.
 //
 // TODO(cleanup): These are generally useful, put them somewhere.
 
