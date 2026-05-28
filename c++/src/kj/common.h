@@ -2725,6 +2725,17 @@ public:
     for (size_t s = size_, i = 0; i < s; i++) { dst[i] = src[i]; }
   }
 
+  inline void write(kj::ArrayPtr<const T> other) {
+    // Copy data to the head of this pointer, then advance past the copied data.
+    first(other.size()).copyFrom(other); // first will do a bounds check
+    ptr += other.size();
+    size_ -= other.size();
+  }
+
+  inline void write(kj::ArrayPtr<const kj::ArrayPtr<const T>> pieces) {
+    for (auto piece: pieces) { write(piece); }
+  }
+
 private:
   T* ptr;
   size_t size_;
